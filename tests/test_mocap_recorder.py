@@ -43,9 +43,28 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(result["Head"]["orientation_xyzw"]["y"], 0.5)
         self.assertEqual(result["Head"]["tracking_state"], "tracked")
 
+    def test_extract_hands_serializes_state_and_confidence(self):
+        body = SimpleNamespace(
+            hand_left_state=2,
+            hand_left_confidence=1,
+            hand_right_state=3,
+            hand_right_confidence=0,
+        )
+        result = recorder.extract_hands(body)
+
+        self.assertEqual(result["left"], {"state": "open", "confidence": "high"})
+        self.assertEqual(result["right"], {"state": "closed", "confidence": "low"})
+
+    def test_selected_joint_specs_can_limit_to_hands(self):
+        result = recorder.selected_joint_specs(hands_only=True)
+        names = [name for name, _constant in result]
+
+        self.assertEqual(names, list(recorder.HAND_JOINT_NAMES))
+        self.assertNotIn("SpineBase", names)
+
     def test_session_writes_jsonl_and_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            session = recorder.RecordingSession(Path(temp_dir), ["Head"])
+            session = recorder.RecordingSession(Path(temp_dir), ["Head"], "hands_only")
             session_dir = session.start()
             session.write({"tracking_id": 7, "joints": {}})
             session.stop()
@@ -56,6 +75,7 @@ class RecorderTests(unittest.TestCase):
             self.assertEqual(frame["tracking_id"], 7)
             self.assertEqual(metadata["frame_count"], 1)
             self.assertEqual(metadata["joint_names"], ["Head"])
+            self.assertEqual(metadata["capture_mode"], "hands_only")
 
     def test_nearest_body_uses_spine_depth(self):
         far = SimpleNamespace(is_tracked=True, joints=[_joint(0, 0, 3.0)])

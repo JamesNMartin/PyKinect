@@ -2,7 +2,8 @@
 
 This program records the 25-joint skeleton produced by a Kinect v2. Each frame
 contains camera-space joint positions (meters), Kinect tracking confidence, and
-joint orientation quaternions. It also provides a live stick-figure preview.
+joint orientation quaternions. It also overlays the skeleton on the live 1080p
+color feed and can record that feed alongside the motion data.
 
 ## Hardware and platform
 
@@ -84,6 +85,50 @@ For an unattended fixed-length take:
 python mocap_recorder.py --headless --duration 30 --output recordings
 ```
 
+Add color video recording to either interactive or headless capture:
+
+```powershell
+python mocap_recorder.py --record-color
+```
+
+Color is saved as a 1920x1080 MJPEG `color.avi`. A corresponding
+`color_timestamps.jsonl` maps every video frame to recording time. Color video
+uses considerably more disk space than skeleton-only capture. Skeleton records
+also include `nearest_color_frame_index` for direct alignment with the video.
+
+Run in hand-only mode when you only want wrist, hand, hand-tip, thumb, and hand
+state/confidence data:
+
+```bash
+./run_from_wsl.sh --hands-only
+```
+
+Hand-only mode can still use the color preview and color recording:
+
+```bash
+./run_from_wsl.sh --hands-only --record-color
+```
+
+Export each completed take as an animated FBX armature:
+
+```bash
+./run_from_wsl.sh --record-color --export-fbx
+```
+
+FBX export uses Blender's binary FBX writer. If Blender is not installed on
+Windows, install it with:
+
+```powershell
+winget install --exact --id BlenderFoundation.Blender
+```
+
+An existing session can be converted without reconnecting the Kinect:
+
+```bash
+py.exe -3.11 "$(wslpath -w "$PWD/export_fbx.py")" \
+  "$(wslpath -w "$PWD/recordings/mocap_YYYYMMDD_HHMMSS")"
+```
+
 The nearest visible person is selected and their Kinect tracking ID remains
 locked. If they disappear for about one second, the recorder selects the nearest
 visible person again.
@@ -96,16 +141,30 @@ Every take creates a timestamped folder:
 recordings/mocap_20260710_143000/
   frames.jsonl
   session.json
+  color.avi                 # with --record-color
+  color_timestamps.jsonl    # with --record-color
+  motion.fbx                # with --export-fbx
 ```
 
 `frames.jsonl` has one JSON object per captured body frame. Streaming frames to
 disk keeps long recordings memory-efficient and preserves completed lines if the
-program is interrupted. `session.json` describes the coordinate system, joints,
-duration, and frame count.
+program is interrupted. Each frame includes `joints` plus a `hands` object with
+the SDK's left/right hand state (`open`, `closed`, `lasso`, `not_tracked`, or
+`unknown`) and confidence (`low` or `high`). In `--hands-only` mode, `joints`
+contains only wrist, hand, hand-tip, and thumb joints. `session.json` describes
+the coordinate system, capture mode, joints, duration, and frame count.
 
 Positions use the Kinect camera coordinate system: `x` is horizontal, `y` is up,
 and `z` points away from the camera. Values are meters. Orientations are Kinect
 SDK quaternions in `x, y, z, w` order.
+
+The Kinect SDK exposes a fixed set of 25 body joints, including wrist, hand,
+hand-tip, and thumb points for each side. It also reports hand state and
+confidence, but it does not provide full finger bones. More landmarks require a
+second computer-vision pose model and are estimates rather than additional
+Kinect depth-tracked joints. For best native tracking, keep your hands separated
+from your torso and each other, avoid occlusion and loose reflective clothing,
+use even lighting, and stay roughly 1.5–3.5 meters from the sensor.
 
 ## Troubleshooting
 
@@ -117,6 +176,9 @@ SDK quaternions in `x, y, z, w` order.
   and SDK are legacy software.
 - **No skeleton:** face the camera, keep your whole body in view, improve room
   lighting, and move into the recommended distance range.
+- **Poor hand tracking:** keep palms visible to the sensor, avoid crossing hands
+  over the body, slow down fast gestures, and watch the preview's hand confidence
+  readout. `low` confidence means the SDK is guessing.
 
 ## Tests
 
